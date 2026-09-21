@@ -1,0 +1,114 @@
+name: CI/CD Frontend Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: [self-hosted, linux]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Calculate Environment & Tags
+        id: meta
+        shell: bash
+        run: |
+          REGISTRY="${DOCKER_REGISTRY_URL:-registry.local}"
+          IMAGE_NAME="rqm-frontend"
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:8}"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            ENV_TYPE="preview"
+            BRANCH_CLEAN="pr-${{ github.event.number }}"
+            PRIMARY_TAG="${BRANCH_CLEAN}-${SHORT_SHA}"
+            LATEST_TAG="${BRANCH_CLEAN}-latest"
+          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            ENV_TYPE="production"
+            BRANCH_CLEAN="main"
+            PRIMARY_TAG="${SHORT_SHA}"
+            LATEST_TAG="latest"
+          elif [[ "${{ github.ref_name }}" == "develop" ]]; then
+            ENV_TYPE="staging"
+            BRANCH_CLEAN="develop"
+            PRIMARY_TAG="stage-${SHORT_SHA}"
+            LATEST_TAG="stage-latest"
+          else
+            # Feature branches (feature/*, feat/*)
+            ENV_TYPE="feature"
+            RAW_BRANCH="${{ github.ref_name }}"
+            BRANCH_CLEAN=$(echo "${RAW_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
+            PRIMARY_TAG="${BRANCH_CLEAN}-${SHORT_SHA}"
+            LATEST_TAG="${BRANCH_CLEAN}-latest"
+          fi
+
+          FULL_IMAGE_PRIMARY="${REGISTRY}/${IMAGE_NAME}:${PRIMARY_TAG}"
+          FULL_IMAGE_LATEST="${REGISTRY}/${IMAGE_NAME}:${LATEST_TAG}"
+
+          echo "env_type=${ENV_TYPE}" >> $GITHUB_OUTPUT
+          echo "branch_clean=${BRANCH_CLEAN}" >> $GITHUB_OUTPUT
+          echo "primary_tag=${PRIMARY_TAG}" >> $GITHUB_OUTPUT
+          echo "latest_tag=${LATEST_TAG}" >> $GITHUB_OUTPUT
+          echo "full_image_primary=${FULL_IMAGE_PRIMARY}" >> $GITHUB_OUTPUT
+          echo "full_image_latest=${FULL_IMAGE_LATEST}" >> $GITHUB_OUTPUT
+
+          echo "=========================================="
+          echo "Target Environment: ${ENV_TYPE}"
+          echo "Clean Branch:       ${BRANCH_CLEAN}"
+          echo "Primary Image:      ${FULL_IMAGE_PRIMARY}"
+          echo "Latest Tag Image:   ${FULL_IMAGE_LATEST}"
+          echo "=========================================="
+
+      - name: Build Docker Image
+        shell: bash
+        run: |
+          IMAGE_PRIMARY="${{ steps.meta.outputs.full_image_primary }}"
+          IMAGE_LATEST="${{ steps.meta.outputs.full_image_latest }}"
+
+          echo "Building ${IMAGE_PRIMARY}..."
+          docker build \
+            -t "${IMAGE_PRIMARY}" \
+            -t "${IMAGE_LATEST}" \
+            -f ./Dockerfile .
+
+      - name: Push to Local Registry
+        shell: bash
+        run: |
+          IMAGE_PRIMARY="${{ steps.meta.outputs.full_image_primary }}"
+          IMAGE_LATEST="${{ steps.meta.outputs.full_image_latest }}"
+
+          echo "Pushing ${IMAGE_PRIMARY}..."
+          docker push "${IMAGE_PRIMARY}"
+
+          echo "Pushing ${IMAGE_LATEST}..."
+          docker push "${IMAGE_LATEST}"
+
+      - name: Pipeline Summary
+        shell: bash
+        run: |
+          echo "### 🚀 CI Build & Push Succeeded" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | \`${{ steps.meta.outputs.env_type }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch / Ref** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Primary Image** | \`${{ steps.meta.outputs.full_image_primary }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Latest Image** | \`${{ steps.meta.outputs.full_image_latest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Registry** | \`http://registry.local\` |" >> $GITHUB_STEP_SUMMARY
