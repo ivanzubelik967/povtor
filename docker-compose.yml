@@ -1,0 +1,60 @@
+services:
+  # 1. БАЗА ДАННЫХ С ЦИТАТАМИ
+  postgres_db:
+    build:
+      context: ./rqm_DB
+      dockerfile: Dockerfile
+    container_name: rqm-postgres
+    restart: always
+    environment:
+      - POSTGRES_DB=random_quote_machine
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=AAAbbbCCC_2014
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - rqm-network
+
+  # 2. БЭКЕНД НА JAVA (SPRING BOOT)
+  backend:
+    build:
+      context: ./rqm_back
+      dockerfile: Dockerfile
+    container_name: rqm-backend
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - DB_HOST=postgres_db
+      - DB_PORT=5432
+      - DB_NAME=random_quote_machine
+      - DB_USER=postgres
+      - DB_PASSWORD=AAAbbbCCC_2014
+    depends_on:
+      - postgres_db
+    networks:
+      - rqm-network
+
+  # 3. ФРОНТЕНД
+  frontend:
+    build:
+      context: ./rqm_front
+      dockerfile: Dockerfile
+    container_name: rqm-frontend
+    restart: always
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - backend
+    links:
+      - backend:backend
+    networks:
+      - rqm-network
+
+volumes:
+  pgdata:
+
+networks:
+  rqm-network:
+    driver: bridge

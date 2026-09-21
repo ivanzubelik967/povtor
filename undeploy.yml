@@ -1,0 +1,44 @@
+---
+- name: Полная и чистая очистка сервера от проекта RQM (Undeploy)
+  hosts: webservers
+  become: yes
+  vars:
+    project_dir: "/proekt"
+
+  tasks:
+    - name: 1. Проверка наличия рабочей директории проекта
+      stat:
+        path: "{{ project_dir }}"
+      register: project_folder
+
+    - name: 2. Остановка контейнеров и удаление образов через Docker Compose
+      command: "docker compose down --rmi all --volumes --remove-orphans"
+      args:
+        chdir: "{{ project_dir }}"
+      when: project_folder.stat.exists
+      ignore_errors: yes
+
+    - name: 3. Удаление рабочей папки проекта с файлами
+      file:
+        path: "{{ project_dir }}"
+        state: absent
+
+    - name: 4. Удаление конфигурационных файлов сайта из Nginx
+      file:
+        path: "/etc/nginx/{{ item }}"
+        state: absent
+      loop:
+        - "sites-enabled/rqm.conf"
+        - "sites-available/rqm.conf"
+
+    - name: 5. Возврат дефолтной конфигурации Nginx (если необходимо)
+      file:
+        src: "/etc/nginx/sites-available/default"
+        dest: "/etc/nginx/sites-enabled/default"
+        state: link
+      ignore_errors: yes
+
+    - name: 6. Перезапуск веб-сервера Nginx для применения изменений
+      service:
+        name: nginx
+        state: restarted

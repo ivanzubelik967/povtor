@@ -1,0 +1,142 @@
+---
+- name: Чистый деплой проекта RQM с нуля через модули Ansible
+  hosts: webservers
+  become: yes
+  vars:
+    project_dir: "/proekt"
+    server_ip: "{{ ansible_host }}"
+
+  tasks:
+    - name: 1. Удаление старых и ошибочных репозиториев apt
+      file:
+        path: "/etc/apt/sources.list.d/{{ item }}"
+        state: absent
+      loop:
+        - docker.list
+        - docker.sources
+        - archive_uri-https_docker_com-resolute.list
+
+    - name: 2. Полная очистка проблемных старых ключей Docker на сервере
+      file:
+        path: "/etc/apt/keyrings/{{ item }}"
+        state: absent
+      loop:
+        - docker.gpg
+        - docker.asc
+
+    - name: 3. Обновление базовых репозиториев, безопасная очистка старого кэша и установка системных утилит + Nginx
+      apt:
+        update_cache: yes
+        clean: yes
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - gnupg
+          - nginx
+        state: present
+
+    - name: 4. Создание папки для ключей безопасности
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: 5. Скачивание валидного официального текстового ключа Docker (.asc)
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        force: yes
+
+    - name: 6. Настройка валидного официального репозитория Docker (Ветка noble, формат DEB822)
+      deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: noble
+        components: stable
+        architectures: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+        signed_by: /etc/apt/keyrings/docker.asc
+        state: present
+
+    - name: 7. Установка Docker и Docker Compose V2 из нового репозитория
+      apt:
+        update_cache: yes
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: 8. Запуск и включение службы Docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: 9. Создание рабочей папки для проекта
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: 10. Копирование файлов проекта на новый сервер
+      copy:
+        src: "{{ item }}"
+        dest: "{{ project_dir }}/"
+        mode: '0755'
+      loop:
+        - "./docker-compose.yml"
+        - "./rqm_front"
+        - "./rqm_back"
+        - "./rqm_DB"
+
+    - name: 11. Создание конфигурации Nginx
+      copy:
+        dest: "/etc/nginx/sites-available/rqm.conf"
+        content: |
+          server {
+              listen 80;
+              server_name {{ server_ip }};
+
+              location / {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+
+              location /api/ {
+                  proxy_pass http://127.0.0.1:8080;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+
+    - name: 12. Активация сайта в Nginx через символическую ссылку
+      file:
+        src: /etc/nginx/sites-available/rqm.conf
+        dest: /etc/nginx/sites-enabled/rqm.conf
+        state: link
+
+    - name: 13. Удаление дефолтной конфигурации Nginx
+      file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+
+    - name: 14. Перезапуск веб-сервера Nginx
+      service:
+        name: nginx
+        state: restarted
+
+    - name: 15. Сборка образов и запуск проекта в Docker Compose
+      command: "docker compose up --build -d"
+      args:
+        chdir: "{{ project_dir }}"
