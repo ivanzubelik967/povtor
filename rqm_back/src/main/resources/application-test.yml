@@ -1,0 +1,26 @@
+# Конфигурация для среды ТЕСТИРОВАНИЯ (TEST)
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/random_quote_machine_test
+    username: postgres
+    password: postgres
+  jpa:
+    defer-datasource-initialization: true
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      mode: always
+
+server:
+  port: 8081
+
+# Дополнительные настройки для TEST
+logging:
+  level:
+    root: WARN

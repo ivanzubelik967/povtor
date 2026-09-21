@@ -1,0 +1,27 @@
+# Конфигурация для среды РАЗРАБОТКИ (DEV)
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/random_quote_machine_dev
+    username: postgres
+    password: postgres
+  jpa:
+    defer-datasource-initialization: true
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      mode: never
+
+server:
+  port: 8080
+
+# Дополнительные настройки для DEV
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE

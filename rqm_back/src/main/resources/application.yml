@@ -1,0 +1,14 @@
+# Основной файл конфигурации (общие настройки для всех сред)
+spring:
+  profiles:
+    active: dev
+    # Активный профиль можно переопределить через переменную окружения: -Dspring.profiles.active=prod
+
+server:
+  port: 8080
+
+# Логирование
+logging:
+  level:
+    root: INFO
+    com.randomquote: DEBUG

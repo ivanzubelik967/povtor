@@ -1,0 +1,28 @@
+# Конфигурация для среды PRODUCTION (PROD)
+# Чувствительные данные (пароли) передаются через переменные окружения или secrets
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:prod-db.example.com}:${DB_PORT:5432}/${DB_NAME:random_quote_machine}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    defer-datasource-initialization: false
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      mode: never
+
+server:
+  port: 8080
+
+# Дополнительные настройки для PROD
+logging:
+  level:
+    root: WARN
+    com.randomquote: INFO
