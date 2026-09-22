@@ -52,6 +52,22 @@ services:
     networks:
       - rqm-network
 
+
+      # 5. ЭКСПОРТЕР МЕТРИК NGINX ДЛЯ PROMETHEUS
+  nginx_exporter:
+    image: nginx/nginx-prometheus-exporter:1.1.0
+    container_name: rqm_nginx_exporter
+    restart: unless-stopped
+    ports:
+      - "9113:9113"
+    command:
+      # Направляем экспортер на порт 80, так как ваш rqm-frontend внутри сети слушает именно 80
+      - -nginx.scrape-uri=http://frontend:80/basic_status
+    depends_on:
+      - frontend
+    networks:
+      - rqm-network
+
 volumes:
   pgdata:
 
